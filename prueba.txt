@@ -1,0 +1,254 @@
+ configurar SSH.
+
+ip domain-name CCNASkills.com
+
+crypto key generate rsa 1024
+
+ip ssh time-out 60
+
+ip ssh authentication-retries 2
+
+ip ssh version 2
+
+username admin  password  adminonly
+
+line vty 0 4
+transport input ssh
+
+login local
+
+Frame Relay
+
+·     Configure Frame Relay entre HQ y B1.
+-     Consulte la tabla de direccionamiento para obtener la dirección IP, la máscara de subred y el DLCI.
+-     HQ usa una subinterfaz punto a punto y un DLCI 41 para conectarse a B1.
+-     El tipo de LMI se debe configurar manualmente como q933a para HQ y B1.
+hq
+interface serial 0
+encapsulation frame-relay
+frame-relay lmi-type q933a
+no shutdown 
+interface serial 0.1 point-to-point
+ip address 192.168.3.3 255.255.255.0
+frame-relay interface-dlci 41
+no shutdown 
+
+b1
+interface serial 0
+encapsulation frame-relay
+frame-relay lmi-type q933a
+no shutdown 
+·     Configure el enlace WAN de HQ a Internet mediante la encapsulación PPP y la autenticación CHAP.
+-     Cree un usuario ISP con la contraseña cisco.
+·     Configure el enlace WAN de HQ a NewB (NuevoB) mediante la encapsulación PPP y la autenticación PAP.
+-     HQ es el lado DCE del enlace. Elija la frecuencia de reloj.
+-     Cree un usuario NewB con la contraseña cisco.
+hq
+int s0/1/0
+encapsulation ppp 
+ppp aut
+ppp authentication  chap
+exit
+username ISP password cisco
+
+int s0/0/1
+encapsulation ppp
+ppp authentication pap
+ppp pap sent-username HQ password cisco
+clock rate 128000
+exit
+username NewB password cisco
+1
+
+NAT
+
+ Configure static and dynamic NAT on HQ
+  Allow all addresses for the 10.0.0.0/8 address space to be translated using a standard access list named NAT.
+ XYZ Corporation owns the 209.165.200.240/29 address space. The pool, HQ, uses addresses .241 to .245 with a /29 mask.
+The WWW.pka website at 10.0.1.2 is registered with the public DNS system at IP address 209.165.200.246 and should be accessible from the Outside Host.
+
+HQ(config)#ip access-list standard  NAT
+HHQ(config-std-nacl)#permit 10.0.0.0 0.255.255.255
+HQ(config-std-nacl)#exit
+HQ(config)#ip nat pool hq 209.165.200.241  209.165.200.245 netmask 255.255.255.248
+HQ(config)#ip nat insi
+HQ(config)#ip nat inside sourc
+HQ(config)#ip nat inside source list NAT pool HQ
+HQ(config)#ip nat inside source st
+HQ(config)#ip nat inside source static  10.0.1.2 209.165.200.246
+HQ(config)#int s0/0/0.41
+HQ(config-subif)#ip nat inside
+HQ(config-subif)#int s0/0/1
+HQ(config-if)#ip nat inside
+HQ(config-if)#int g0/0
+HQ(config-if)#ip nat inside
+HQ(config-if)#int s0/1/0
+HQ(config-if)#ip nat out
+HQ(config-if)#ip nat outside
+
+
+DHCP
+
+ On B1, configure a DHCP pool for the Sales VLAN 20 using the following requirements:
+ Exclude the first 10 IP addresses in the range.
+ The case-sensitive pool name is VLAN20.
+ Include the DNS server attached to the HQ LAN as part of the DHCP configuration.
+ Configure the Sales PC to use DHCP.
+B1(config)#ip dhcp excluded-address 10.1.20.1 10.1.20.10
+B1(config)#ip dhcp pool VLAN20
+B1(dhcp-config)#network 10.1.20.0 255.255.255.0
+B1(dhcp-config)#dns-server 10.0.1.4
+B1(dhcp-config)#default-router 10.1.20.1
+B1(dhcp-config)#exit
+
+Static and Default Routing
+
+Configure HQ with a default route to the Internet and a static route to the NewB LAN. Use the exit interface as an argument.
+HQ(config)#ip route 0.0.0.0 0.0.0.0 s0/1/0
+HQ(config)#ip route 10.4.5.0  255.255.255.0 s0/0/1
+EIGRP Routing
+
+Configure and optimize HQ and B1 with EIGRP routing.
+ Use autonomous system 100 and disable automatic summarization.
+HQ should advertise the static and default router to B1.
+Disable EIGRP updates on appropriate interfaces.
+Manually summarize EIGRP routes so that the B1 router only advertises the 10.1.0.0/16 address space to HQ
+
+HQ(config)#router eigrp 100
+HQ(config-router)#network 10.0.0.0 0.255.255.255
+HQ(config-router)#no auto-summary
+HQ(config-router)#redistribute  static
+HQ(config-router)#passive-interface g0/0
+HQ(config-router)#passive-interface s0/0/1
+HQ(config-router)#passive-interface s0/1/0
+
+B1(config)#router eigrp  100
+B1(config-router)#network 10.0.0.0 0.255.255.255
+B1(config-router)#no auto-summary 
+B1(config-router)#passive-interface g0/0.10as
+B1(config-router)#passive-interface g0/0.20
+B1(config-router)#passive-interface g0/0.30
+B1(config-router)#passive-interface g0/0.99
+B1(config-router)#exit
+B1(config)#int s0/0/0
+B1(config-if)#ip summary-address eigrp 100 10.1.0.0 255.255.0.0
+
+
+Inter-VLAN Routing
+ Configure B1 for inter-VLAN routing.
+ Using the addressing table for branch routers, configure and activate the LAN interface for inter-VLAN routing. VLAN 99 is the native VLAN.
+B1(config)#int g0/0.10
+B1(config-subif)#ip address 10.1.10.1 255.255.255.0
+B1(config-subif)#encapsulation dot1Q 10
+B1(config-subif)#ip address 10.1.10.1 255.255.255.0
+B1(config-subif)#int g0/0.20
+B1(config-subif)#encapsulation dot1Q 20
+B1(config-subif)#ip address 10.1.20.1 255.255.255.0
+B1(config-subif)#int g0/0.30
+B1(config-subif)#encapsulation dot1Q 30
+B1(config-subif)#ip address 10.1.30.1 255.255.255.0
+B1(config-subif)#int g0/0.99
+B1(config-subif)#encapsulation dot1Q 99
+B1(config-subif)#ip address 10.1.99.1 255.255.255.0
+
+
+VLANs and Trunking Configurations
+
+Configure trunking and VLANs on B1-S2.
+Create and name the VLANs listed in the VLAN Configuration and Port Mappings table on B1-S2 only.
+Configure the VLAN 99 interface and default gateway.
+Assign VLANs to the appropriate access ports.
+Set trunking mode to on for Fa0/1 - Fa0/4.
+Disable all unused ports and assign the BlackHole VLAN
+
+B1-S2(config)#vlan 10
+B1-S2(config-vlan)#name Admin
+B1-S2(config-vlan)#vlan 10
+B1-S2(config-vlan)#vlan 20
+B1-S2(config-vlan)#name Sales
+B1-S2(config-vlan)#vlan 30
+B1-S2(config-vlan)#name Production
+B1-S2(config-vlan)#vlan 30
+B1-S2(config-vlan)#name Mgmt&Native
+B1-S2(config-vlan)#vlan 999
+B1-S2(config-vlan)#name Blackhole
+B1-S2(config-vlan)#exit
+B1-S2(config)#int vlan99
+B1-S2(config-if)#ip address 10.1.99.22 255.255.255.0
+B1-S2(config-if)#exit
+B1-S2(config)#ip defaul
+B1-S2(config)#ip default-gateway 10.1.99.1
+B1-S2(config)#int fastEthernet 0/6
+B1-S2(config-if)#switchport mode access 	
+B1-S2(config-if)#switchport access vlan 10
+B1-S2(config-if)#int fastEthernet 0/11
+B1-S2(config-if)#switchport mode access 
+B1-S2(config-if)#switchport access vlan 20
+B1-S2(config-if)#int fastEthernet 0/16
+B1-S2(config-if)#switchport mode access 
+B1-S2(config-if)#switchport access vlan 30
+B1-S2(config-if)#int fastEthernet 0/1-4
+B1-S2(config-if-range)#switchport trunk native vlan 99
+B1-S2(config-if-range)#exit
+B1-S2(config)#int range fastEthernet 0/5,fa0/7-10,fa0/12-15,fa0/17-24, g0/1-2
+BB1-S2(config-if-range)#switchport mode access 
+B1-S2(config-if-range)#switchport access vlan 999 
+B1-S2(config-if-range)#shutdown 
+
+Port Security
+
+Use the following policy to establish port security on the B1-S2 access ports:
+Allow one MAC addresses to be learned on the port.
+Configure the first learned MAC address to stick to the configuration.
+Set the port to shut down if there is a security violation
+
+B1-S2(config)#int range fa0/6,fa0/11,fa0/16
+B1-S2(config-if-range)#switchport port-security maximum 1
+B1-S2(config-if-range)#switchport port-security mac-address sticky 
+B1-S2(config-if-range)#switchport port-security violation shutdown 
+B1-S2(config-if-range)#
+Access List Policy
+
+ Because HQ is connected to the Internet, configure a named ACL called HQINBOUND in the following order:
+   Allow inbound HTTP requests to the WWW.pka server.
+   Allow only established TCP sessions from the Internet.
+   Allow only inbound ping replies from the Internet.
+     Explicitly block all other inbound access from the Internet.
+
+tunel
+WEST(config)# interface tunnel 0
+WEST(config-if)# ip address 172.16.12.1 255.255.255.252
+WEST(config-if)# tunnel source s0/0/0
+WEST(config-if)# tunnel destination 10.2.2.1
+EAST(config)# interface tunnel 0
+EAST(config-if)# ip address 172.16.12.2 255.255.255.252
+EAST(config-if)# tunnel source s0/0/1
+EAST(config-if)# tunnel destination 10.1.1.1
+error
+
+R1(config)# ip route 10.3.3.3 255.255.255.255  serial 0
+R3(config)# ip route 10.1.1.1 255.255.255.255 serial 1
+
+Syslog
+
+R1(config)#logging host [IP DEL SERVIDOR]
+R1(config)#service timestamps log datetime msec(2)
+Habilitamos el flow
+
+RouterNetflow#configure terminal
+RouterNetflow(config)#interface FastEthernet 1/1
+RouterNetflow(config-if)#ip route-cache flow
+RouterNetflow(config-if)#interface serial 1/0
+RouterNetflow(config-if)#ip route-cache flow
+RouterNetflow(config-if)#exit
+
+Para detener el Netflow basta con denegar con el comando:
+
+RouterNetflow(config-if)# no ip route-cache flow
+
+Ahora le tenemos que decir al router dónde tiene que enviar los paquetes del Netflow:
+
+RouterNetflow(config)#ip flow-export version 5 origin-as
+RouterNetflow(config)#ip flow-export destination 192.168.1.101 4444
+RouterNetflow(config)#ip flow-export source FastEthernet 1/1
+
